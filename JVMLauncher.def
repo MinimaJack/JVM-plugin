@@ -1,0 +1,7 @@
+LIBRARY    "JVMLauncher"
+
+EXPORTS
+GetClassObject
+DestroyObject
+GetClassNames
+SetPlatformCapabilities
