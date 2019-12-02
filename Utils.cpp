@@ -72,7 +72,7 @@ std::wstring JStringToWString(JNIEnv* env, jstring string)
 }
 
 jstring getjstringFrom1C(JNIEnv* env, tVariant* paParams) {
-	jstring jstr;
+	jstring jstr = nullptr;
 
 	switch (TV_VT(paParams))
 	{

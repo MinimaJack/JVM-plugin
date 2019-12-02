@@ -29,13 +29,25 @@ static wchar_t *g_MethodNamesRu[] = { L"LaunchInJVM",L"LaunchInJVMP",L"LaunchInJ
 
 
 static void JNICALL Java_Runner_log(JNIEnv *env, jobject thisObj, jstring info) {
-	wchar_t *who = JVM_LAUNCHER, *what = L"Java";
-	auto wstring = JStringToWString(env, info);
-	WCHAR_T *err = 0;
+	wchar_t *who = JVM_LAUNCHER;
+	jclass classClass = env->GetObjectClass(thisObj);
+	jmethodID mid = env->GetMethodID(classClass, "getClass", "()Ljava/lang/Class;");
+	jobject clsObj = env->CallObjectMethod(thisObj, mid);
+	classClass = env->GetObjectClass(clsObj);
+	auto getNameMethod = env->GetMethodID(classClass, "getName", "()Ljava/lang/String;");
+	auto callingClassName = (jstring)env->CallObjectMethod(clsObj, getNameMethod);
 
-	::convToShortWchar(&err, wstring.c_str());
-	gAsyncEvent->ExternalEvent(who, what, err);
-	delete[]err;
+
+	auto wsMessage = JStringToWString(env, info);
+	auto wsCallClassName = JStringToWString(env, callingClassName);
+	WCHAR_T *message = 0;
+	WCHAR_T *className = 0;
+	::convToShortWchar(&message, wsMessage.c_str());
+	::convToShortWchar(&className, wsCallClassName.c_str());
+	gAsyncEvent->ExternalEvent(who, className, message);
+
+	delete[]message;
+	delete[]className;
 
 }
 
