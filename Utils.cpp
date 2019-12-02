@@ -24,7 +24,7 @@ jvalue* getParams(JNIEnv* env, tVariant* paParams, int start, int end) {
 	for (auto i = start; i < end; i++)
 	{
 		if (TV_VT(&paParams[i]) == VTYPE_PSTR || TV_VT(&paParams[i]) == VTYPE_PWSTR) {
-			values[i - start].l = (jobject)getjstringFrom1C(env, &paParams[i]);
+			values[i - start].l = getjstringFrom1C(env, &paParams[i]);
 		}
 		else if (TV_VT(&paParams[i]) == VTYPE_I4) {
 			values[i - start].i = TV_INT(&paParams[i]);
@@ -33,7 +33,7 @@ jvalue* getParams(JNIEnv* env, tVariant* paParams, int start, int end) {
 			values[i - start].z = TV_BOOL(&paParams[i]);
 		}
 		else if (TV_VT(&paParams[i]) == VTYPE_R4) {
-			values[i - start].f = (jfloat)TV_R4(&paParams[i]);
+			values[i - start].f = TV_R4(&paParams[i]);
 		}
 	}
 	return values;

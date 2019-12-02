@@ -28,7 +28,7 @@ static wchar_t *g_MethodNamesRu[] = { L"LaunchInJVM",L"LaunchInJVMP",L"LaunchInJ
 
 
 static void JNICALL Java_Runner_log(JNIEnv *env, jobject thisObj, jstring info) {
-	wchar_t *who = L"ComponentNative", *what = L"Java";
+	wchar_t *who = JVM_LAUNCHER, *what = L"Java";
 	auto wstring = JStringToWString(env, info);
 	WCHAR_T *err = 0;
 
@@ -59,7 +59,7 @@ bool JVMLauncher::endCall(JNIEnv* env)
 		WCHAR_T *err = 0;
 
 		::convToShortWchar(&err, wstring.c_str());
-		pAsyncEvent->AddError(ADDIN_E_FAIL, L"JVMLauncher", err, 10);
+		pAsyncEvent->AddError(ADDIN_E_FAIL, JVM_LAUNCHER, err, 10);
 		delete[]err;
 
 		m_JVMEnv->ExceptionClear();
@@ -162,7 +162,7 @@ jmethodID JVMLauncher::JNI_getStaticMethodID(jclass clazz, const char* name, con
 void JVMLauncher::addJar(const char* jarname)
 {
 	if (m_boolEnabled) {
-		pAsyncEvent->AddError(ADDIN_E_FAIL, L"JVMLauncher", L"JVM already launched", 6);
+		pAsyncEvent->AddError(ADDIN_E_FAIL, JVM_LAUNCHER, L"JVM already launched", 6);
 		return;
 	}
 	m_listOfJars.push_back(jarname);
@@ -189,20 +189,20 @@ JVMLauncher::JVMLauncher() {
 void JVMLauncher::LaunchJVM() {
 	if (m_hDllInstance == nullptr) {
 		if (m_JavaHome.empty()) {
-			pAsyncEvent->AddError(ADDIN_E_FAIL, L"JVMLauncher", L"Set JAVA_HOME environment", 1);
+			pAsyncEvent->AddError(ADDIN_E_FAIL, JVM_LAUNCHER, L"Set JAVA_HOME environment", 1);
 			return;
 		}
 		m_JvmDllLocation = m_JavaHome + "/jre/bin/server/jvm.dll";
 		m_hDllInstance = LoadLibraryA(m_JvmDllLocation.c_str());
 	}
 	if (m_hDllInstance == nullptr) {
-		pAsyncEvent->AddError(ADDIN_E_FAIL, L"JVMLauncher", L"Cannot find JDK", 1);
+		pAsyncEvent->AddError(ADDIN_E_FAIL, JVM_LAUNCHER, L"Cannot find JDK", 1);
 		return;
 	}
 	else {
 
 		if (m_GetCreatedJavaVMs == nullptr) {
-			m_GetCreatedJavaVMs = (GetCreatedJavaVMs)GetProcAddress(m_hDllInstance, "JNI_GetCreatedJavaVMs");
+			m_GetCreatedJavaVMs = reinterpret_cast<GetCreatedJavaVMs>(GetProcAddress(m_hDllInstance, "JNI_GetCreatedJavaVMs"));
 		}
 
 		int n;
@@ -214,7 +214,7 @@ void JVMLauncher::LaunchJVM() {
 			if (n == 0)
 			{
 				if (m_JVMInstance == nullptr) {
-					m_JVMInstance = (CreateJavaVM)GetProcAddress(m_hDllInstance, "JNI_CreateJavaVM");
+					m_JVMInstance = reinterpret_cast<CreateJavaVM>(GetProcAddress(m_hDllInstance, "JNI_CreateJavaVM"));
 				}
 				std::string strJavaClassPath;
 				std::string strJavaLibraryPath;
@@ -244,12 +244,12 @@ void JVMLauncher::LaunchJVM() {
 
 				jint res = m_JVMInstance(&m_RunningJVMInstance, (void **)&m_JVMEnv, &vm_args);
 				if (res != JNI_OK) {
-					pAsyncEvent->AddError(ADDIN_E_FAIL, L"JVMLauncher", L"Could not launch the JVM", 3);
+					pAsyncEvent->AddError(ADDIN_E_FAIL, JVM_LAUNCHER, L"Could not launch the JVM", 3);
 				}
 				else {
 					m_boolEnabled = true;
 					if (!verify()) {
-						pAsyncEvent->AddError(ADDIN_E_FAIL, L"JVMLauncher", L"Cannot verify jar", 8);
+						pAsyncEvent->AddError(ADDIN_E_FAIL, JVM_LAUNCHER, L"Cannot verify jar", 8);
 						this->JNI_destroyVM();
 					}
 				}
@@ -274,11 +274,11 @@ bool JVMLauncher::validateCall() {
 	LaunchJVM();
 
 	if (!m_boolEnabled) {
-		pAsyncEvent->AddError(ADDIN_E_FAIL, L"JVMLauncher", L"JVM not running", 5);
+		pAsyncEvent->AddError(ADDIN_E_FAIL, JVM_LAUNCHER, L"JVM not running", 5);
 		return false;
 	}
 	if (!valid) {
-		pAsyncEvent->AddError(ADDIN_E_FAIL, L"JVMLauncher", L"Load not valid packages", 5);
+		pAsyncEvent->AddError(ADDIN_E_FAIL, JVM_LAUNCHER, L"Load not valid packages", 5);
 		return false;
 	}
 	return true;
@@ -296,7 +296,7 @@ jclass JVMLauncher::findClassForCall(std::string className) {
 			JNINativeMethod methods[]{ { "log", "(Ljava/lang/String;)V", (void *)&Java_Runner_log } };  // mapping table
 			if (m_JVMEnv->RegisterNatives(findedClass, methods, 1) < 0) {
 				if (m_JVMEnv->ExceptionOccurred())                                        // verify if it's ok
-					pAsyncEvent->AddError(ADDIN_E_FAIL, L"JVMLauncher", L" OOOOOPS: exception when registreing natives handlers", 6);
+					pAsyncEvent->AddError(ADDIN_E_FAIL, JVM_LAUNCHER, L" OOOOOPS: exception when registreing natives handlers", 6);
 			}
 		}
 		else {
@@ -335,7 +335,7 @@ jmethodID JVMLauncher::HasMethodInCache(jclass findedclass) {
 //---------------------------------------------------------------------------//
 bool JVMLauncher::RegisterExtensionAs(WCHAR_T** wsExtensionName)
 {
-	wchar_t *wsExtension = L"JVMLauncher";
+	wchar_t *wsExtension = JVM_LAUNCHER;
 	size_t iActualSize = ::wcslen(wsExtension) + 1;
 
 	if (m_iMemory && m_iMemory->AllocMemory((void**)wsExtensionName, iActualSize * sizeof(wchar_t))) {
@@ -451,14 +451,14 @@ bool JVMLauncher::SetPropVal(const long lPropNum, tVariant *varPropVal)
 		break;
 	case ePropJavaHome:
 		if (m_boolEnabled) {
-			pAsyncEvent->AddError(ADDIN_E_FAIL, L"JVMLauncher", L"JVM already running", 7);
+			pAsyncEvent->AddError(ADDIN_E_FAIL, JVM_LAUNCHER, L"JVM already running", 7);
 			return false;
 		}
 		m_JavaHome = getStdStringFrom1C(varPropVal);
 		break;
 	case ePropLibraryDir:
 		if (m_boolEnabled) {
-			pAsyncEvent->AddError(ADDIN_E_FAIL, L"JVMLauncher", L"JVM already running", 7);
+			pAsyncEvent->AddError(ADDIN_E_FAIL, JVM_LAUNCHER, L"JVM already running", 7);
 			return false;
 		}
 		m_ProductLibDir = getStdStringFrom1C(varPropVal);
@@ -637,7 +637,7 @@ bool JVMLauncher::CallAsFunc(const long lMethodNum,
 	std::string className = getStdStringFrom1C(paParams);
 
 	if (className.empty()) {
-		pAsyncEvent->AddError(ADDIN_E_FAIL, L"JVMLauncher", L"Send empty class name", 10);
+		pAsyncEvent->AddError(ADDIN_E_FAIL, JVM_LAUNCHER, L"Send empty class name", 10);
 		return false;
 	}
 	if (!validateCall()) {
@@ -673,14 +673,14 @@ bool JVMLauncher::CallAsFunc(const long lMethodNum,
 	res = m_RunningJVMInstance->AttachCurrentThread((void**)&m_JVMEnv, NULL);
 
 	if (res != JNI_OK) {
-		pAsyncEvent->AddError(ADDIN_E_FAIL, L"JVMLauncher", L"Could not attach to the JVM", 4);
+		pAsyncEvent->AddError(ADDIN_E_FAIL, JVM_LAUNCHER, L"Could not attach to the JVM", 4);
 		return false;
 	}
 
 	jclass findedClass = findClassForCall(className);
 
 	if (findedClass == nullptr) {
-		pAsyncEvent->AddError(ADDIN_E_FAIL, L"JVMLauncher", L"Cannot find class", 10);
+		pAsyncEvent->AddError(ADDIN_E_FAIL, JVM_LAUNCHER, L"Cannot find class", 10);
 		resultOk = false;
 		goto detach;
 	}
@@ -710,37 +710,32 @@ bool JVMLauncher::CallAsFunc(const long lMethodNum,
 	}
 
 	if (!resultOk) {
-		pAsyncEvent->AddError(ADDIN_E_FAIL, L"JVMLauncher", L"Cannot find method", 10);
+		pAsyncEvent->AddError(ADDIN_E_FAIL, JVM_LAUNCHER, L"Cannot find method", 10);
 		goto detach;
 	}
 
 	jvalue *values = getParams(this->m_JVMEnv, paParams, 1, lastIndexOfParam);
-	jboolean resultBoolean = false;
-	jstring resultString = nullptr;
-	jint resultInt = 0;
-	jfloat resultFloat = 0.0f;
-	jdouble resultDouble = 0.0;
-	jobject resultByteArray = nullptr;
+	jvalue result;
 	switch (rt)
 	{
 	case VTYPE_BOOL:
-		resultBoolean = JNI_callStaticBooleanMethodA(findedClass, methodID, values, resultOk);
+		result.z = JNI_callStaticBooleanMethodA(findedClass, methodID, values, resultOk);
 		break;
 	case VTYPE_PWSTR:
 	case VTYPE_PSTR:
-		resultString = (jstring)JNI_callStaticObjectMethodA(findedClass, methodID, values, resultOk);
+		result.l = JNI_callStaticObjectMethodA(findedClass, methodID, values, resultOk);
 		break;
 	case VTYPE_I4:
-		resultInt = JNI_callStaticIntMethodA(findedClass, methodID, values, resultOk);
+		result.i = JNI_callStaticIntMethodA(findedClass, methodID, values, resultOk);
 		break;
 	case VTYPE_R4:
-		resultFloat = JNI_callStaticFloatMethodA(findedClass, methodID, values, resultOk);
+		result.f = JNI_callStaticFloatMethodA(findedClass, methodID, values, resultOk);
 		break;
 	case VTYPE_R8:
-		resultDouble = JNI_callStaticDoubleMethodA(findedClass, methodID, values, resultOk);
+		result.d = JNI_callStaticDoubleMethodA(findedClass, methodID, values, resultOk);
 		break;
 	case VTYPE_BLOB:
-		resultByteArray = JNI_callStaticObjectMethodA(findedClass, methodID, values, resultOk);
+		result.l = JNI_callStaticObjectMethodA(findedClass, methodID, values, resultOk);
 		break;
 	case VTYPE_EMPTY:
 		this->JNI_callStaticVoidMethodA(findedClass, methodID, values, resultOk);
@@ -760,34 +755,34 @@ bool JVMLauncher::CallAsFunc(const long lMethodNum,
 	switch (rt)
 	{
 	case VTYPE_BOOL:
-		TV_BOOL(pvarRetValue) = resultBoolean;
+		TV_BOOL(pvarRetValue) = result.z;
 		break;
 	case VTYPE_PWSTR:
 	case VTYPE_PSTR:
 	{
-		auto wstring = JStringToWString(m_JVMEnv, resultString);
+		auto wstring = JStringToWString(m_JVMEnv, static_cast<jstring>(result.l));
 		auto length = wstring.length();
 		if (length && m_iMemory->AllocMemory((void**)&pvarRetValue->pwstrVal, length * sizeof(WCHAR_T)))
 		{
 			memcpy(pvarRetValue->pwstrVal, wstring.c_str(), length * sizeof(WCHAR_T));
 			pvarRetValue->strLen = length;
 		}
-		m_JVMEnv->DeleteLocalRef(resultString);
+		m_JVMEnv->DeleteLocalRef(result.l);
 		TV_VT(pvarRetValue) = VTYPE_PWSTR;
 	}
 	break;
 	case VTYPE_I4:
-		TV_INT(pvarRetValue) = resultInt;
+		TV_INT(pvarRetValue) = result.i;
 		break;
 	case VTYPE_R4:
-		TV_R4(pvarRetValue) = resultFloat;
+		TV_R4(pvarRetValue) = result.f;
 		break;
 	case VTYPE_R8:
-		TV_R8(pvarRetValue) = resultDouble;
+		TV_R8(pvarRetValue) = result.d;
 		break;
 	case VTYPE_BLOB:
 	{
-		jbyteArray arr = reinterpret_cast<jbyteArray>(resultByteArray);
+		jbyteArray arr = static_cast<jbyteArray>(result.l);
 		auto length = m_JVMEnv->GetArrayLength(arr);
 		void *elements = m_JVMEnv->GetPrimitiveArrayCritical(arr, NULL);
 		if (length && m_iMemory->AllocMemory((void**)&pvarRetValue->pstrVal, length))
@@ -796,7 +791,7 @@ bool JVMLauncher::CallAsFunc(const long lMethodNum,
 			pvarRetValue->strLen = length;
 		}
 		m_JVMEnv->ReleasePrimitiveArrayCritical(arr, elements, 0);
-		m_JVMEnv->DeleteLocalRef(resultByteArray);
+		m_JVMEnv->DeleteLocalRef(result.l);
 	}
 	break;
 	}

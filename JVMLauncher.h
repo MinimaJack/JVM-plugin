@@ -19,6 +19,8 @@
 #define END_CALL \
 	hasError = this->endCall(env); }
 
+#define JVM_LAUNCHER L"JVMLauncher"
+
 typedef jint(JNICALL *CreateJavaVM)(JavaVM **pvm, void **penv, void *args);
 typedef jint(JNICALL * GetCreatedJavaVMs)(JavaVM**, jsize, jsize*);
 
