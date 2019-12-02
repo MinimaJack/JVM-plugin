@@ -11,6 +11,7 @@
 #include <stdio.h>
 #include <include/jni.h>
 #include <wchar.h>
+#include <algorithm>
 #include "JVMLauncher.h"
 
 #define BASE_ERRNO     7
@@ -286,6 +287,7 @@ bool JVMLauncher::validateCall() {
 
 jclass JVMLauncher::findClassForCall(std::string className) {
 	jclass findedClass = nullptr;
+	std::replace(className.begin(), className.end(), '.', '/');
 	auto val = m_cachedClasses.find(className);
 	if (val == m_cachedClasses.end()) {
 		jclass neededclass = this->m_JVMEnv->FindClass(className.c_str());
@@ -293,10 +295,11 @@ jclass JVMLauncher::findClassForCall(std::string className) {
 			findedClass = (jclass)this->m_JVMEnv->NewGlobalRef(neededclass);
 			m_cachedClasses.insert(std::pair<std::string, jclass>(className, findedClass));
 			this->m_JVMEnv->DeleteLocalRef(neededclass);
-			JNINativeMethod methods[]{ { "log", "(Ljava/lang/String;)V", (void *)&Java_Runner_log } };  // mapping table
+			JNINativeMethod methods[]{ { "log", "(Ljava/lang/String;)V", (void *)&Java_Runner_log } };
 			if (m_JVMEnv->RegisterNatives(findedClass, methods, 1) < 0) {
-				if (m_JVMEnv->ExceptionOccurred())                                        // verify if it's ok
-					pAsyncEvent->AddError(ADDIN_E_FAIL, JVM_LAUNCHER, L" OOOOOPS: exception when registreing natives handlers", 6);
+				if (m_JVMEnv->ExceptionOccurred()) {
+					this->m_JVMEnv->ExceptionClear();
+				}
 			}
 		}
 		else {
