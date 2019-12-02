@@ -24,10 +24,6 @@ static IAddInDefBase *gAsyncEvent = NULL;
 static wchar_t *g_PropNames[] = { L"IsEnabled", L"javaHome", L"libraryDir" };
 static wchar_t *g_MethodNames[] = { L"LaunchInJVM",L"LaunchInJVMP",L"LaunchInJVMPP", L"CallFInJVMB", L"CallFInJVMBP", L"CallFInJVMBPP", L"CallFInJVM", L"CallFInJVMP", L"CallFInJVMPP", L"Disable", L"AddJar" };
 
-static wchar_t *g_PropNamesRu[] = { L"Включен", L"javaHome", L"libraryDir" };
-static wchar_t *g_MethodNamesRu[] = { L"LaunchInJVM",L"LaunchInJVMP",L"LaunchInJVMPP", L"CallFInJVMB", L"CallFInJVMBP", L"CallFInJVMBPP", L"CallFInJVM", L"CallFInJVMP", L"CallFInJVMPP", L"Выключить", L"AddJar" };
-
-
 static void JNICALL Java_Runner_log(JNIEnv *env, jobject thisObj, jstring info) {
 	wchar_t *who = JVM_LAUNCHER;
 	jclass classClass = env->GetObjectClass(thisObj);
@@ -374,9 +370,6 @@ long JVMLauncher::FindProp(const WCHAR_T* wsPropName)
 	::convFromShortWchar(&propName, wsPropName);
 	plPropNum = findName(g_PropNames, propName, ePropLast);
 
-	if (plPropNum == -1)
-		plPropNum = findName(g_PropNamesRu, propName, ePropLast);
-
 	delete[] propName;
 
 	return plPropNum;
@@ -390,19 +383,7 @@ const WCHAR_T* JVMLauncher::GetPropName(long lPropNum, long lPropAlias)
 	wchar_t *wsCurrentName = NULL;
 	WCHAR_T *wsPropName = NULL;
 	int iActualSize = 0;
-
-	switch (lPropAlias)
-	{
-	case 0: // First language
-		wsCurrentName = g_PropNames[lPropNum];
-		break;
-	case 1: // Second language
-		wsCurrentName = g_PropNamesRu[lPropNum];
-		break;
-	default:
-		return 0;
-	}
-
+	wsCurrentName = g_PropNames[lPropNum];
 	iActualSize = wcslen(wsCurrentName) + 1;
 
 	if (m_iMemory && wsCurrentName)
@@ -529,9 +510,6 @@ long JVMLauncher::FindMethod(const WCHAR_T* wsMethodName)
 
 	plMethodNum = findName(g_MethodNames, name, eMethLast);
 
-	if (plMethodNum == -1)
-		plMethodNum = findName(g_MethodNamesRu, name, eMethLast);
-
 	delete[] name;
 
 	return plMethodNum;
@@ -545,18 +523,7 @@ const WCHAR_T* JVMLauncher::GetMethodName(const long lMethodNum, const long lMet
 	wchar_t *wsCurrentName = NULL;
 	WCHAR_T *wsMethodName = NULL;
 	size_t iActualSize = 0;
-
-	switch (lMethodAlias)
-	{
-	case 0: // First language
-		wsCurrentName = g_MethodNames[lMethodNum];
-		break;
-	case 1: // Second language
-		wsCurrentName = g_MethodNamesRu[lMethodNum];
-		break;
-	default:
-		return 0;
-	}
+	wsCurrentName = g_MethodNames[lMethodNum];
 
 	iActualSize = wcslen(wsCurrentName) + 1;
 
