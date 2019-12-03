@@ -22,7 +22,7 @@ static IAddInDefBase *gAsyncEvent = NULL;
 
 
 static wchar_t *g_PropNames[] = { L"IsEnabled", L"javaHome", L"libraryDir" };
-static wchar_t *g_MethodNames[] = { L"LaunchInJVM",L"LaunchInJVMP",L"LaunchInJVMPP", L"CallFInJVMB", L"CallFInJVMBP", L"CallFInJVMBPP", L"CallFInJVM", L"CallFInJVMP", L"CallFInJVMPP", L"Disable", L"AddJar" };
+static wchar_t *g_MethodNames[] = { L"LaunchInJVM",L"LaunchInJVMP",L"LaunchInJVMPP", L"CallFInJVMB", L"CallFInJVMBP", L"CallFInJVMBPP", L"CallFInJVM", L"CallFInJVMP", L"CallFInJVMPP", L"CallFInJVMPPP", L"CallFInJVMPPPP", L"Disable", L"AddJar" };
 
 static void JNICALL Java_Runner_log(JNIEnv *env, jobject thisObj, jstring info) {
 	wchar_t *who = JVM_LAUNCHER;
@@ -554,6 +554,10 @@ long JVMLauncher::GetNParams(const long lMethodNum)
 		return 3;
 	case eCallAsFuncPP:
 		return 4;
+	case eCallAsFuncPPP:
+		return 5;
+	case eCallAsFuncPPPP:
+		return 6;
 	default:
 		return 0;
 	}
@@ -572,6 +576,8 @@ bool JVMLauncher::HasRetVal(const long lMethodNum)
 	case eCallAsFunc:
 	case eCallAsFuncP:
 	case eCallAsFuncPP:
+	case eCallAsFuncPPP:
+	case eCallAsFuncPPPP:
 		return true;
 	default:
 		return false;
@@ -644,6 +650,8 @@ bool JVMLauncher::CallAsFunc(const long lMethodNum,
 	case eCallAsFunc:
 	case eCallAsFuncP:
 	case eCallAsFuncPP:
+	case eCallAsFuncPPP:
+	case eCallAsFuncPPPP:
 	{
 		lastIndexOfParam = lSizeArray - 1;
 		rt = TV_VT(&paParams[lastIndexOfParam]);

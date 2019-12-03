@@ -46,6 +46,8 @@ public:
 		eCallAsFunc,
 		eCallAsFuncP,
 		eCallAsFuncPP,
+		eCallAsFuncPPP,
+		eCallAsFuncPPPP,
 		eMethDisable,
 		eMethAddJar,
 		eMethLast      // Always last
