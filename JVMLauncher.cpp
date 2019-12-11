@@ -12,6 +12,7 @@
 #include <include/jni.h>
 #include <wchar.h>
 #include <algorithm>
+#include <utility>
 #include "JVMLauncher.h"
 
 #define BASE_ERRNO     7
@@ -21,7 +22,11 @@ static jobject s_threadLock;
 IAddInDefBase *gAsyncEvent = nullptr;
 
 static wchar_t *g_PropNames[] = { L"IsEnabled", L"javaHome", L"libraryDir" };
-static wchar_t *g_MethodNames[] = { L"LaunchInJVM",L"LaunchInJVMP",L"LaunchInJVMPP", L"CallFInJVMB", L"CallFInJVMBP", L"CallFInJVMBPP", L"CallFInJVM", L"CallFInJVMP", L"CallFInJVMPP", L"CallFInJVMPPP", L"CallFInJVMPPPP", L"Disable", L"AddJar" };
+static wchar_t *g_MethodNames[] = { L"LaunchInJVM", L"LaunchInJVMP", L"LaunchInJVMPP", 
+                                    L"CallFInJVMB", L"CallFInJVMBP", L"CallFInJVMBPP",
+	                                L"CallFInJVM", L"CallFInJVMP", L"CallFInJVMPP", L"CallFInJVMPPP", L"CallFInJVMPPPP",
+                                    L"ClassFunctionCall", L"ClassFunctionCallP", L"ClassFunctionCallPP",
+	                                L"Disable", L"AddJar" };
 
 static void JNICALL Java_Runner_log(JNIEnv *env, jobject thisObj, jstring info) {
 	if (gAsyncEvent == nullptr) {
@@ -323,7 +328,7 @@ jclass JVMLauncher::findClassForCall(std::string className) {
 	auto val = m_cachedClasses.find(className);
 	if (val == m_cachedClasses.end()) {
 		jclass neededclass = this->m_JVMEnv->FindClass(className.c_str());
-		if (!this->m_JVMEnv->ExceptionCheck()) {
+		if (!this->m_JVMEnv->ExceptionOccurred()) {
 			findedClass = (jclass)this->m_JVMEnv->NewGlobalRef(neededclass);
 			m_cachedClasses.insert(std::pair<std::string, jclass>(className, findedClass));
 			this->m_JVMEnv->DeleteLocalRef(neededclass);
@@ -363,6 +368,14 @@ jmethodID JVMLauncher::HasMethodInCache(jclass findedclass) {
 		findedMethod = val->second;
 	}
 	return findedMethod;
+}
+
+std::optional<jclassMethodHolder> JVMLauncher::HasClassAndMethodInCache(std::string className) {
+	auto val = m_cachedClassesMethod.find(className);
+	if (val != m_cachedClassesMethod.end()) {
+		return val->second;
+	}
+	return std::nullopt;
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -571,12 +584,15 @@ long JVMLauncher::GetNParams(const long lMethodNum)
 	case eCallAsProcedureP:
 	case eCallAsFuncBP:
 	case eCallAsFunc:
+	case eClassFunctionCall:
 		return 2;
 	case eCallAsProcedurePP:
 	case eCallAsFuncBPP:
 	case eCallAsFuncP:
+	case eClassFunctionCallP:
 		return 3;
 	case eCallAsFuncPP:
+	case eClassFunctionCallPP:
 		return 4;
 	case eCallAsFuncPPP:
 		return 5;
@@ -602,6 +618,9 @@ bool JVMLauncher::HasRetVal(const long lMethodNum)
 	case eCallAsFuncPP:
 	case eCallAsFuncPPP:
 	case eCallAsFuncPPPP:
+	case eClassFunctionCall:
+	case eClassFunctionCallP:
+	case eClassFunctionCallPP:
 		return true;
 	default:
 		return false;
@@ -638,72 +657,10 @@ bool JVMLauncher::CallAsProc(const long lMethodNum,
 
 	return true;
 }
-//---------------------------------------------------------------------------//
-bool JVMLauncher::CallAsFunc(const long lMethodNum,
-	tVariant* pvarRetValue, tVariant* paParams, const long lSizeArray)
-{
-	if (!lSizeArray || !paParams)
-		return false;
 
-	bool resultOk = true;
-	std::string className = getStdStringFrom1C(paParams);
-
-	if (className.empty()) {
-		pAsyncEvent->AddError(ADDIN_E_FAIL, JVM_LAUNCHER, L"Send empty class name", 10);
-		return false;
-	}
-	if (!validateCall()) {
-		return false;
-	}
-
-	int lastIndexOfParam = lSizeArray;
-	TYPEVAR rt;
-
-	switch (lMethodNum)
-	{
-	case eCallAsProcedure:
-	case eCallAsProcedureP:
-	case eCallAsProcedurePP:
-		rt = VTYPE_EMPTY;
-		break;
-	case eCallAsFuncB:
-	case eCallAsFuncBP:
-	case eCallAsFuncBPP:
-		rt = VTYPE_BLOB;
-		break;
-	case eCallAsFunc:
-	case eCallAsFuncP:
-	case eCallAsFuncPP:
-	case eCallAsFuncPPP:
-	case eCallAsFuncPPPP:
-	{
-		lastIndexOfParam = lSizeArray - 1;
-		rt = TV_VT(&paParams[lastIndexOfParam]);
-	}
-	break;
-	}
-
-	jint res = m_RunningJVMInstance->GetEnv((void**)&m_JVMEnv, NULL);
-	res = m_RunningJVMInstance->AttachCurrentThread((void**)&m_JVMEnv, NULL);
-
-	if (res != JNI_OK) {
-		pAsyncEvent->AddError(ADDIN_E_FAIL, JVM_LAUNCHER, L"Could not attach to the JVM", 4);
-		return false;
-	}
-
-	jclass findedClass = findClassForCall(className);
-
-	if (findedClass == nullptr) {
-		pAsyncEvent->AddError(ADDIN_E_FAIL, JVM_LAUNCHER, L"Cannot find class", 10);
-		resultOk = false;
-		goto detach;
-	}
-
-	jmethodID methodID;
-
-	if (!(methodID = HasMethodInCache(findedClass))) {
-		std::string signature = getSignature(this->m_JVMEnv, paParams, 1, lastIndexOfParam);
-		switch (rt) {
+std::string JVMLauncher::buildSignature(JNIEnv* env, tVariant* paParams, int start, int end, TYPEVAR returnType) {
+	std::string signature = getSignature(env, paParams, 1, end);
+		switch (returnType) {
 		case VTYPE_PSTR: signature.append("Ljava/lang/String;"); break;
 		case VTYPE_PWSTR: signature.append("Ljava/lang/String;"); break;
 		case VTYPE_BLOB: signature.append("[B"); break;
@@ -715,24 +672,127 @@ bool JVMLauncher::CallAsFunc(const long lMethodNum,
 		case VTYPE_DATE: signature.append("Ljava/util/Date;"); break;
 		case VTYPE_TM: signature.append("Ljava/util/Date;"); break;
 		}
-		methodID = JNI_getStaticMethodID(findedClass, "mainInt", signature.c_str(), resultOk);
-		if (!resultOk) {
-			goto detach;
-		}
-		m_cachedMethod.insert(std::pair<jclass, jmethodID>(findedClass, methodID));
+	return signature;
+}
+
+
+
+//---------------------------------------------------------------------------//
+bool JVMLauncher::CallAsFunc(const long lMethodNum,
+	tVariant* pvarRetValue, tVariant* paParams, const long lSizeArray)
+{
+	if (!lSizeArray || !paParams)
+		return false;
+
+	bool resultOk = true;
+	std::string classFunctionName = getStdStringFrom1C(paParams);
+
+	if (classFunctionName.empty()) {
+		pAsyncEvent->AddError(ADDIN_E_FAIL, JVM_LAUNCHER, L"Send empty class name", 10);
+		return false;
 	}
-	else {
-		methodID = findMethodForCall(findedClass, resultOk);
+	if (!validateCall()) {
+		return false;
 	}
 
-	if (!resultOk) {
-		pAsyncEvent->AddError(ADDIN_E_FAIL, JVM_LAUNCHER, L"Cannot find method", 10);
+	int lastIndexOfParam = lSizeArray;
+	bool classContainFunctionName = false;
+	TYPEVAR returnType;
+
+	switch (lMethodNum)
+	{
+	case eCallAsProcedure:
+	case eCallAsProcedureP:
+	case eCallAsProcedurePP:
+		returnType = VTYPE_EMPTY;
+		break;
+	case eCallAsFuncB:
+	case eCallAsFuncBP:
+	case eCallAsFuncBPP:
+		returnType = VTYPE_BLOB;
+		break;
+	case eCallAsFunc:
+	case eCallAsFuncP:
+	case eCallAsFuncPP:
+	case eCallAsFuncPPP:
+	case eCallAsFuncPPPP:
+	{
+		lastIndexOfParam = lSizeArray - 1;
+		returnType = TV_VT(&paParams[lastIndexOfParam]);
+	}
+	break;
+	case eClassFunctionCall:
+	case eClassFunctionCallP:
+	case eClassFunctionCallPP:
+	{
+		classContainFunctionName = true;
+		lastIndexOfParam = lSizeArray - 1;
+		returnType = TV_VT(&paParams[lastIndexOfParam]);
+	}
+	break;
+	}
+
+	jint res = m_RunningJVMInstance->GetEnv((void**)&m_JVMEnv, NULL);
+	res = m_RunningJVMInstance->AttachCurrentThread((void**)&m_JVMEnv, NULL);
+
+	if (res != JNI_OK) {
+		pAsyncEvent->AddError(ADDIN_E_FAIL, JVM_LAUNCHER, L"Could not attach to the JVM", 4);
+		return false;
+	}
+	jclass findedClass;
+	jmethodID methodID;
+	
+	if (classContainFunctionName) {
+		auto value = HasClassAndMethodInCache(classFunctionName);
+		if (value != std::nullopt) {
+			findedClass = value->first;
+			methodID = value->second;
+		}
+		else {
+			auto pos = classFunctionName.find_last_of(".");
+			auto className = classFunctionName.substr(0, pos);
+			findedClass = findClassForCall(className);
+			if (findedClass != nullptr) {
+				auto methodName = classFunctionName.substr(pos+1);
+				std::string signature = buildSignature(this->m_JVMEnv, paParams, 1, lastIndexOfParam, returnType);
+				methodID = JNI_getStaticMethodID(findedClass, methodName.c_str(), signature.c_str(), resultOk);
+				if (resultOk) {
+					m_cachedClassesMethod.insert(std::make_pair(classFunctionName, std::make_pair(findedClass, methodID))); 
+				}
+			}
+		}
+	}
+	else {
+		findedClass = findClassForCall(classFunctionName);
+		if (findedClass != nullptr) {
+			if (!(methodID = HasMethodInCache(findedClass))) {
+				std::string signature = this->buildSignature(this->m_JVMEnv, paParams, 1, lastIndexOfParam, returnType);
+				methodID = JNI_getStaticMethodID(findedClass, "mainInt", signature.c_str(), resultOk);
+				if (resultOk) {
+					m_cachedMethod.insert(std::pair<jclass, jmethodID>(findedClass, methodID));
+				}
+			}
+			else {
+				methodID = findMethodForCall(findedClass, resultOk);
+			}
+		}
+	}
+
+	if (findedClass == nullptr) {
+		pAsyncEvent->AddError(ADDIN_E_FAIL, JVM_LAUNCHER, L"Cannot find class", 10);
+		resultOk = false;
+		goto detach;
+	}
+
+	if (methodID == nullptr) {
+		pAsyncEvent->AddError(ADDIN_E_FAIL, JVM_LAUNCHER, L"Cannot find method" , 10);
+		resultOk = false;
 		goto detach;
 	}
 
 	jvalue *values = getParams(this->m_JVMEnv, paParams, 1, lastIndexOfParam);
 	jvalue result;
-	switch (rt)
+	switch (returnType)
 	{
 	case VTYPE_BOOL:
 		result.z = JNI_callStaticBooleanMethodA(findedClass, methodID, values, resultOk);
@@ -766,11 +826,11 @@ bool JVMLauncher::CallAsFunc(const long lMethodNum,
 		goto detach;
 	}
 
-	if (rt != VTYPE_EMPTY) {
-		TV_VT(pvarRetValue) = rt;
+	if (returnType != VTYPE_EMPTY) {
+		TV_VT(pvarRetValue) = returnType;
 	}
 
-	switch (rt)
+	switch (returnType)
 	{
 	case VTYPE_BOOL:
 		TV_BOOL(pvarRetValue) = result.z;

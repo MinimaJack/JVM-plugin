@@ -9,6 +9,7 @@
 #include <map>
 #include <include/jni.h>
 #include "Utils.h"
+#include <optional>
 
 #define BEGIN_JAVA { JNIEnv* env = this->m_JVMEnv; this->m_JVMEnv = nullptr;
 #define END_JAVA this->m_JVMEnv = env; }
@@ -23,6 +24,7 @@
 
 typedef jint(JNICALL *CreateJavaVM)(JavaVM **pvm, void **penv, void *args);
 typedef jint(JNICALL * GetCreatedJavaVMs)(JavaVM**, jsize, jsize*);
+typedef std::pair<jclass, jmethodID> jclassMethodHolder;
 
 class JVMLauncher : public IComponentBase {
 public:
@@ -48,6 +50,9 @@ public:
 		eCallAsFuncPP,
 		eCallAsFuncPPP,
 		eCallAsFuncPPPP,
+		eClassFunctionCall,
+		eClassFunctionCallP,
+		eClassFunctionCallPP,
 		eMethDisable,
 		eMethAddJar,
 		eMethLast      // Always last
@@ -109,15 +114,17 @@ private:
 	std::vector<std::string> m_listOfClasses;
 	std::map<std::string, jclass> m_cachedClasses;
 	std::map<jclass, jmethodID> m_cachedMethod;
-	std::map<std::string, std::pair<jclass, jmethodID>> m_cachedClassesMethod;
+	std::map<std::string, jclassMethodHolder> m_cachedClassesMethod;
 
 	void LaunchJVM();
 	bool verify();
 	jint JNI_destroyVM();
 	bool validateCall();
+	std::string buildSignature(JNIEnv * env, tVariant * paParams, int start, int end, TYPEVAR returnType);
 	jclass findClassForCall(std::string className);
 	jmethodID findMethodForCall(jclass findedclass, bool& hasError);
 	jmethodID HasMethodInCache(jclass findedclass);
+	std::optional<jclassMethodHolder> HasClassAndMethodInCache(std::string classFunctionName);
 	long findName(wchar_t* names[], const wchar_t* name, const uint32_t size) const;
 	void addError(uint32_t wcode, const wchar_t* source,
 		const wchar_t* descriptor, long code);
