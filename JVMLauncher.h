@@ -109,6 +109,7 @@ private:
 	std::vector<std::string> m_listOfClasses;
 	std::map<std::string, jclass> m_cachedClasses;
 	std::map<jclass, jmethodID> m_cachedMethod;
+	std::map<std::string, std::pair<jclass, jmethodID>> m_cachedClassesMethod;
 
 	void LaunchJVM();
 	bool verify();

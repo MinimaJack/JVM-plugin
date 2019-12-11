@@ -18,29 +18,50 @@
 
 static jobject s_threadLock;
 
-static IAddInDefBase *gAsyncEvent = NULL;
-
+IAddInDefBase *gAsyncEvent = nullptr;
 
 static wchar_t *g_PropNames[] = { L"IsEnabled", L"javaHome", L"libraryDir" };
 static wchar_t *g_MethodNames[] = { L"LaunchInJVM",L"LaunchInJVMP",L"LaunchInJVMPP", L"CallFInJVMB", L"CallFInJVMBP", L"CallFInJVMBPP", L"CallFInJVM", L"CallFInJVMP", L"CallFInJVMPP", L"CallFInJVMPPP", L"CallFInJVMPPPP", L"Disable", L"AddJar" };
 
 static void JNICALL Java_Runner_log(JNIEnv *env, jobject thisObj, jstring info) {
-	wchar_t *who = JVM_LAUNCHER;
-	jclass classClass = env->GetObjectClass(thisObj);
-	jmethodID mid = env->GetMethodID(classClass, "getClass", "()Ljava/lang/Class;");
-	jobject clsObj = env->CallObjectMethod(thisObj, mid);
-	classClass = env->GetObjectClass(clsObj);
-	auto getNameMethod = env->GetMethodID(classClass, "getName", "()Ljava/lang/String;");
-	auto callingClassName = (jstring)env->CallObjectMethod(clsObj, getNameMethod);
-
-
-	auto wsMessage = JStringToWString(env, info);
-	auto wsCallClassName = JStringToWString(env, callingClassName);
+	if (gAsyncEvent ==nullptr) {
+		return;
+	}
+		
 	WCHAR_T *message = 0;
 	WCHAR_T *className = 0;
-	::convToShortWchar(&message, wsMessage.c_str());
+	jstring callingClassName;
+	jobject classObject;
+	jclass classOfClass;
+
+	jclass cls = env->FindClass("java/lang/Class");
+	if (env->IsInstanceOf(thisObj, cls)) {
+		classObject = thisObj;
+		classOfClass = env->GetObjectClass(thisObj);
+	}
+	else {
+		jclass classClass = env->GetObjectClass(thisObj);
+
+		jmethodID mid = env->GetMethodID(classClass, "getClass", "()Ljava/lang/Class;");
+		jobject clsObj = env->CallObjectMethod(thisObj, mid);
+
+		classObject = clsObj;
+		classOfClass = env->GetObjectClass(clsObj);
+	}
+
+	jmethodID getNameMethod = env->GetMethodID(classOfClass, "getName", "()Ljava/lang/String;");
+	callingClassName = (jstring)env->CallObjectMethod(classObject, getNameMethod);
+
+	auto wsCallClassName = JStringToWString(env, callingClassName);
 	::convToShortWchar(&className, wsCallClassName.c_str());
-	gAsyncEvent->ExternalEvent(who, className, message);
+	if (env->IsSameObject(info, NULL)) {
+		gAsyncEvent->ExternalEvent(JVM_LAUNCHER, className, L"NULL");
+	}
+	else {
+		auto wsMessage = JStringToWString(env, info);
+		::convToShortWchar(&message, wsMessage.c_str());
+		gAsyncEvent->ExternalEvent(JVM_LAUNCHER, className, message);
+	}
 
 	delete[]message;
 	delete[]className;
@@ -53,18 +74,20 @@ bool JVMLauncher::endCall(JNIEnv* env)
 	jobject exh = m_JVMEnv->ExceptionOccurred();
 	if (exh) {
 		jclass classClass = this->m_JVMEnv->GetObjectClass(exh);
-		auto getClassLoaderMethod = this->m_JVMEnv->GetMethodID(classClass, "getLocalizedMessage", "()Ljava/lang/String;");
-		auto info = (jstring)this->m_JVMEnv->CallObjectMethod(exh, getClassLoaderMethod);
-		if (m_JVMEnv->IsSameObject(info, NULL)) {
-			jmethodID mid = env->GetMethodID(classClass, "getClass", "()Ljava/lang/Class;");
-			jobject clsObj = env->CallObjectMethod(exh, mid);
-			jclass classClass = env->GetObjectClass(clsObj);
+		auto getMessageMethod = this->m_JVMEnv->GetMethodID(classClass, "getMessage", "()Ljava/lang/String;");
+		auto info = (jstring)this->m_JVMEnv->CallObjectMethod(exh, getMessageMethod);
+		auto mid = env->GetMethodID(classClass, "getClass", "()Ljava/lang/Class;");
+		
+		jobject clsObj = env->CallObjectMethod(exh, mid);
+		jclass classOfClass = env->GetObjectClass(clsObj);
+		mid = this->m_JVMEnv->GetMethodID(classOfClass, "getName", "()Ljava/lang/String;");
+		auto exeptionName = (jstring)this->m_JVMEnv->CallObjectMethod(clsObj, mid);
+		
+		auto wstring = JStringToWString(env, exeptionName);
 
-			auto getNameMethod = this->m_JVMEnv->GetMethodID(classClass, "getName", "()Ljava/lang/String;");
-			info = (jstring)this->m_JVMEnv->CallObjectMethod(clsObj, getNameMethod);
-		}
-
-		auto wstring = JStringToWString(env, info);
+		if (!m_JVMEnv->IsSameObject(info, NULL)) {
+			wstring = wstring.append(L":").append(JStringToWString(env, info));
+		};
 		WCHAR_T *err = 0;
 
 		::convToShortWchar(&err, wstring.c_str());
@@ -216,7 +239,7 @@ void JVMLauncher::LaunchJVM() {
 
 		int n;
 		jint retval = m_GetCreatedJavaVMs(&m_RunningJVMInstance, 1, (jsize*)&n);
-
+		
 		if (retval == JNI_OK)
 		{
 
@@ -252,6 +275,7 @@ void JVMLauncher::LaunchJVM() {
 				vm_args.ignoreUnrecognized = JNI_TRUE;
 
 				jint res = m_JVMInstance(&m_RunningJVMInstance, (void **)&m_JVMEnv, &vm_args);
+				
 				if (res != JNI_OK) {
 					pAsyncEvent->AddError(ADDIN_E_FAIL, JVM_LAUNCHER, L"Could not launch the JVM", 3);
 				}
@@ -688,6 +712,7 @@ bool JVMLauncher::CallAsFunc(const long lMethodNum,
 		case VTYPE_R4: signature.append("F"); break;
 		case VTYPE_R8: signature.append("D"); break;
 		case VTYPE_EMPTY: signature.append("V"); break;
+		case VTYPE_DATE: signature.append("Ljava/util/Date;"); break;
 		}
 		methodID = JNI_getStaticMethodID(findedClass, "mainInt", signature.c_str(), resultOk);
 		if (!resultOk) {
@@ -713,6 +738,7 @@ bool JVMLauncher::CallAsFunc(const long lMethodNum,
 		break;
 	case VTYPE_PWSTR:
 	case VTYPE_PSTR:
+	case VTYPE_DATE:
 		result.l = JNI_callStaticObjectMethodA(findedClass, methodID, values, resultOk);
 		break;
 	case VTYPE_I4:

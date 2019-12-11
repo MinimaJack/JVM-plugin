@@ -13,7 +13,9 @@ uint32_t getLenShortWcharStr(const WCHAR_T* Source);
 std::wstring JStringToWString(JNIEnv* env, jstring string);
 std::string getStdStringFrom1C(tVariant* paParams);
 jstring getjstringFrom1C(JNIEnv* env, tVariant* paParams);
+jobject getjdateFrom1C(JNIEnv* env, tVariant* paParams);
 std::string getSignature(JNIEnv* env, tVariant* paParams, int start, int end);
 jvalue* getParams(JNIEnv* env, tVariant* paParams, int start, int end);
+void fromOleDate(struct tm* paTm, double paOADate);
 
 #endif //__UTILS_H__
