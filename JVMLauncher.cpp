@@ -24,10 +24,10 @@ static wchar_t *g_PropNames[] = { L"IsEnabled", L"javaHome", L"libraryDir" };
 static wchar_t *g_MethodNames[] = { L"LaunchInJVM",L"LaunchInJVMP",L"LaunchInJVMPP", L"CallFInJVMB", L"CallFInJVMBP", L"CallFInJVMBPP", L"CallFInJVM", L"CallFInJVMP", L"CallFInJVMPP", L"CallFInJVMPPP", L"CallFInJVMPPPP", L"Disable", L"AddJar" };
 
 static void JNICALL Java_Runner_log(JNIEnv *env, jobject thisObj, jstring info) {
-	if (gAsyncEvent ==nullptr) {
+	if (gAsyncEvent == nullptr) {
 		return;
 	}
-		
+
 	WCHAR_T *message = 0;
 	WCHAR_T *className = 0;
 	jstring callingClassName;
@@ -77,12 +77,12 @@ bool JVMLauncher::endCall(JNIEnv* env)
 		auto getMessageMethod = this->m_JVMEnv->GetMethodID(classClass, "getMessage", "()Ljava/lang/String;");
 		auto info = (jstring)this->m_JVMEnv->CallObjectMethod(exh, getMessageMethod);
 		auto mid = env->GetMethodID(classClass, "getClass", "()Ljava/lang/Class;");
-		
+
 		jobject clsObj = env->CallObjectMethod(exh, mid);
 		jclass classOfClass = env->GetObjectClass(clsObj);
 		mid = this->m_JVMEnv->GetMethodID(classOfClass, "getName", "()Ljava/lang/String;");
 		auto exeptionName = (jstring)this->m_JVMEnv->CallObjectMethod(clsObj, mid);
-		
+
 		auto wstring = JStringToWString(env, exeptionName);
 
 		if (!m_JVMEnv->IsSameObject(info, NULL)) {
@@ -239,7 +239,7 @@ void JVMLauncher::LaunchJVM() {
 
 		int n;
 		jint retval = m_GetCreatedJavaVMs(&m_RunningJVMInstance, 1, (jsize*)&n);
-		
+
 		if (retval == JNI_OK)
 		{
 
@@ -275,7 +275,7 @@ void JVMLauncher::LaunchJVM() {
 				vm_args.ignoreUnrecognized = JNI_TRUE;
 
 				jint res = m_JVMInstance(&m_RunningJVMInstance, (void **)&m_JVMEnv, &vm_args);
-				
+
 				if (res != JNI_OK) {
 					pAsyncEvent->AddError(ADDIN_E_FAIL, JVM_LAUNCHER, L"Could not launch the JVM", 3);
 				}
@@ -713,6 +713,7 @@ bool JVMLauncher::CallAsFunc(const long lMethodNum,
 		case VTYPE_R8: signature.append("D"); break;
 		case VTYPE_EMPTY: signature.append("V"); break;
 		case VTYPE_DATE: signature.append("Ljava/util/Date;"); break;
+		case VTYPE_TM: signature.append("Ljava/util/Date;"); break;
 		}
 		methodID = JNI_getStaticMethodID(findedClass, "mainInt", signature.c_str(), resultOk);
 		if (!resultOk) {
@@ -739,6 +740,7 @@ bool JVMLauncher::CallAsFunc(const long lMethodNum,
 	case VTYPE_PWSTR:
 	case VTYPE_PSTR:
 	case VTYPE_DATE:
+	case VTYPE_TM:
 		result.l = JNI_callStaticObjectMethodA(findedClass, methodID, values, resultOk);
 		break;
 	case VTYPE_I4:
@@ -776,15 +778,20 @@ bool JVMLauncher::CallAsFunc(const long lMethodNum,
 	case VTYPE_PWSTR:
 	case VTYPE_PSTR:
 	{
-		auto wstring = JStringToWString(m_JVMEnv, static_cast<jstring>(result.l));
-		auto length = wstring.length();
-		if (length && m_iMemory->AllocMemory((void**)&pvarRetValue->pwstrVal, length * sizeof(WCHAR_T)))
-		{
-			memcpy(pvarRetValue->pwstrVal, wstring.c_str(), length * sizeof(WCHAR_T));
-			pvarRetValue->strLen = length;
+		if (!m_JVMEnv->IsSameObject(result.l, NULL)) {
+			TV_VT(pvarRetValue) = VTYPE_PWSTR;
+			auto wstring = JStringToWString(m_JVMEnv, static_cast<jstring>(result.l));
+			auto length = wstring.length();
+			if (length && m_iMemory->AllocMemory((void**)&pvarRetValue->pwstrVal, length * sizeof(WCHAR_T)))
+			{
+				memcpy(pvarRetValue->pwstrVal, wstring.c_str(), length * sizeof(WCHAR_T));
+				pvarRetValue->strLen = length;
+			}
+			m_JVMEnv->DeleteLocalRef(result.l);
 		}
-		m_JVMEnv->DeleteLocalRef(result.l);
-		TV_VT(pvarRetValue) = VTYPE_PWSTR;
+		else {
+			TV_VT(pvarRetValue) = VTYPE_NULL;
+		}
 	}
 	break;
 	case VTYPE_I4:
@@ -798,18 +805,42 @@ bool JVMLauncher::CallAsFunc(const long lMethodNum,
 		break;
 	case VTYPE_BLOB:
 	{
-		jbyteArray arr = static_cast<jbyteArray>(result.l);
-		auto length = m_JVMEnv->GetArrayLength(arr);
-		void *elements = m_JVMEnv->GetPrimitiveArrayCritical(arr, NULL);
-		if (length && m_iMemory->AllocMemory((void**)&pvarRetValue->pstrVal, length))
-		{
-			memcpy(pvarRetValue->pstrVal, elements, length);
-			pvarRetValue->strLen = length;
+		if (!m_JVMEnv->IsSameObject(result.l, NULL)) {
+			jbyteArray arr = static_cast<jbyteArray>(result.l);
+			auto length = m_JVMEnv->GetArrayLength(arr);
+			void *elements = m_JVMEnv->GetPrimitiveArrayCritical(arr, NULL);
+			if (length && m_iMemory->AllocMemory((void**)&pvarRetValue->pstrVal, length))
+			{
+				memcpy(pvarRetValue->pstrVal, elements, length);
+				pvarRetValue->strLen = length;
+			}
+			m_JVMEnv->ReleasePrimitiveArrayCritical(arr, elements, 0);
+			m_JVMEnv->DeleteLocalRef(result.l);
 		}
-		m_JVMEnv->ReleasePrimitiveArrayCritical(arr, elements, 0);
-		m_JVMEnv->DeleteLocalRef(result.l);
+		else {
+			TV_VT(pvarRetValue) = VTYPE_NULL;
+		}
 	}
 	break;
+	case VTYPE_DATE:
+	case VTYPE_TM: {
+		if (m_JVMEnv->IsSameObject(result.l, NULL)) {
+			TV_VT(pvarRetValue) = VTYPE_NULL;
+		}
+		else {
+			TV_VT(pvarRetValue) = VTYPE_TM;
+
+			jclass date = m_JVMEnv->FindClass("java/util/Date");
+			jmethodID getTime = m_JVMEnv->GetMethodID(date, "getTime", "()J");
+
+			time_t rawtime = m_JVMEnv->CallLongMethod(result.l, getTime) / 1000;
+			tm* ref = gmtime(&rawtime);
+			(pvarRetValue)->tmVal = *ref;
+			m_JVMEnv->DeleteLocalRef(result.l);
+		}
+	}
+	break;
+
 	}
 
 detach:
