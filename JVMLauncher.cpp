@@ -22,11 +22,12 @@ static jobject s_threadLock;
 IAddInDefBase *gAsyncEvent = nullptr;
 
 static wchar_t *g_PropNames[] = { L"IsEnabled", L"javaHome", L"libraryDir" };
-static wchar_t *g_MethodNames[] = { L"LaunchInJVM", L"LaunchInJVMP", L"LaunchInJVMPP", 
-                                    L"CallFInJVMB", L"CallFInJVMBP", L"CallFInJVMBPP",
-	                                L"CallFInJVM", L"CallFInJVMP", L"CallFInJVMPP", L"CallFInJVMPPP", L"CallFInJVMPPPP",
-                                    L"ClassFunctionCall", L"ClassFunctionCallP", L"ClassFunctionCallPP",
-	                                L"Disable", L"AddJar" };
+static wchar_t *g_MethodNames[] = { L"LaunchInJVM", L"LaunchInJVMP", L"LaunchInJVMPP",
+									L"CallFInJVMB", L"CallFInJVMBP", L"CallFInJVMBPP",
+									L"CallFInJVM", L"CallFInJVMP", L"CallFInJVMPP", L"CallFInJVMPPP", L"CallFInJVMPPPP",
+									L"ClassFunctionCall", L"ClassFunctionCallP", L"ClassFunctionCallPP",
+									L"ClassProcedureCall", L"ClassProcedureCallP", L"ClassProcedureCallPP",
+									L"Disable", L"AddJar" };
 
 static void JNICALL Java_Runner_log(JNIEnv *env, jobject thisObj, jstring info) {
 	if (gAsyncEvent == nullptr) {
@@ -231,6 +232,10 @@ void JVMLauncher::LaunchJVM() {
 		}
 		m_JvmDllLocation = m_JavaHome + "/jre/bin/server/jvm.dll";
 		m_hDllInstance = LoadLibraryA(m_JvmDllLocation.c_str());
+		if (m_hDllInstance == nullptr) {
+			m_JvmDllLocation = m_JavaHome + "/bin/server/jvm.dll";
+			m_hDllInstance = LoadLibraryA(m_JvmDllLocation.c_str());
+		}
 	}
 	if (m_hDllInstance == nullptr) {
 		pAsyncEvent->AddError(ADDIN_E_FAIL, JVM_LAUNCHER, L"Cannot find JDK", 1);
@@ -580,16 +585,19 @@ long JVMLauncher::GetNParams(const long lMethodNum)
 	case eMethAddJar:
 	case eCallAsFuncB:
 	case eCallAsProcedure:
+	case eClassProcedureCall:
 		return 1;
 	case eCallAsProcedureP:
 	case eCallAsFuncBP:
 	case eCallAsFunc:
 	case eClassFunctionCall:
+	case eClassProcedureCallP:
 		return 2;
 	case eCallAsProcedurePP:
 	case eCallAsFuncBPP:
 	case eCallAsFuncP:
 	case eClassFunctionCallP:
+	case eClassProcedureCallPP:
 		return 3;
 	case eCallAsFuncPP:
 	case eClassFunctionCallPP:
@@ -640,6 +648,9 @@ bool JVMLauncher::CallAsProc(const long lMethodNum,
 	case eCallAsProcedure:
 	case eCallAsProcedureP:
 	case eCallAsProcedurePP:
+	case eClassProcedureCall:
+	case eClassProcedureCallP:
+	case eClassProcedureCallPP:
 		return CallAsFunc(lMethodNum, paParams, paParams, lSizeArray);
 	case eMethDisable:
 		m_boolEnabled = false;
@@ -660,18 +671,18 @@ bool JVMLauncher::CallAsProc(const long lMethodNum,
 
 std::string JVMLauncher::buildSignature(JNIEnv* env, tVariant* paParams, int start, int end, TYPEVAR returnType) {
 	std::string signature = getSignature(env, paParams, 1, end);
-		switch (returnType) {
-		case VTYPE_PSTR: signature.append("Ljava/lang/String;"); break;
-		case VTYPE_PWSTR: signature.append("Ljava/lang/String;"); break;
-		case VTYPE_BLOB: signature.append("[B"); break;
-		case VTYPE_I4: signature.append("I"); break;
-		case VTYPE_BOOL: signature.append("Z"); break;
-		case VTYPE_R4: signature.append("F"); break;
-		case VTYPE_R8: signature.append("D"); break;
-		case VTYPE_EMPTY: signature.append("V"); break;
-		case VTYPE_DATE: signature.append("Ljava/util/Date;"); break;
-		case VTYPE_TM: signature.append("Ljava/util/Date;"); break;
-		}
+	switch (returnType) {
+	case VTYPE_PSTR: signature.append("Ljava/lang/String;"); break;
+	case VTYPE_PWSTR: signature.append("Ljava/lang/String;"); break;
+	case VTYPE_BLOB: signature.append("[B"); break;
+	case VTYPE_I4: signature.append("I"); break;
+	case VTYPE_BOOL: signature.append("Z"); break;
+	case VTYPE_R4: signature.append("F"); break;
+	case VTYPE_R8: signature.append("D"); break;
+	case VTYPE_EMPTY: signature.append("V"); break;
+	case VTYPE_DATE: signature.append("Ljava/util/Date;"); break;
+	case VTYPE_TM: signature.append("Ljava/util/Date;"); break;
+	}
 	return signature;
 }
 
@@ -730,6 +741,16 @@ bool JVMLauncher::CallAsFunc(const long lMethodNum,
 		returnType = TV_VT(&paParams[lastIndexOfParam]);
 	}
 	break;
+	case eClassProcedureCall:
+	case eClassProcedureCallP:
+	case eClassProcedureCallPP:
+	{
+		classContainFunctionName = true;
+		lastIndexOfParam = lSizeArray;
+		returnType = VTYPE_EMPTY;
+	}
+	break;
+
 	}
 
 	jint res = m_RunningJVMInstance->GetEnv((void**)&m_JVMEnv, NULL);
@@ -741,7 +762,7 @@ bool JVMLauncher::CallAsFunc(const long lMethodNum,
 	}
 	jclass findedClass;
 	jmethodID methodID;
-	
+
 	if (classContainFunctionName) {
 		auto value = HasClassAndMethodInCache(classFunctionName);
 		if (value != std::nullopt) {
@@ -753,11 +774,11 @@ bool JVMLauncher::CallAsFunc(const long lMethodNum,
 			auto className = classFunctionName.substr(0, pos);
 			findedClass = findClassForCall(className);
 			if (findedClass != nullptr) {
-				auto methodName = classFunctionName.substr(pos+1);
+				auto methodName = classFunctionName.substr(pos + 1);
 				std::string signature = buildSignature(this->m_JVMEnv, paParams, 1, lastIndexOfParam, returnType);
 				methodID = JNI_getStaticMethodID(findedClass, methodName.c_str(), signature.c_str(), resultOk);
 				if (resultOk) {
-					m_cachedClassesMethod.insert(std::make_pair(classFunctionName, std::make_pair(findedClass, methodID))); 
+					m_cachedClassesMethod.insert(std::make_pair(classFunctionName, std::make_pair(findedClass, methodID)));
 				}
 			}
 		}
@@ -785,7 +806,7 @@ bool JVMLauncher::CallAsFunc(const long lMethodNum,
 	}
 
 	if (methodID == nullptr) {
-		pAsyncEvent->AddError(ADDIN_E_FAIL, JVM_LAUNCHER, L"Cannot find method" , 10);
+		pAsyncEvent->AddError(ADDIN_E_FAIL, JVM_LAUNCHER, L"Cannot find method", 10);
 		resultOk = false;
 		goto detach;
 	}
@@ -899,7 +920,7 @@ bool JVMLauncher::CallAsFunc(const long lMethodNum,
 			m_JVMEnv->DeleteLocalRef(result.l);
 		}
 	}
-	break;
+				   break;
 
 	}
 

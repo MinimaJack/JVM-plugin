@@ -53,6 +53,9 @@ public:
 		eClassFunctionCall,
 		eClassFunctionCallP,
 		eClassFunctionCallPP,
+		eClassProcedureCall,
+		eClassProcedureCallP,
+		eClassProcedureCallPP,
 		eMethDisable,
 		eMethAddJar,
 		eMethLast      // Always last
