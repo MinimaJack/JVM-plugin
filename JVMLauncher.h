@@ -26,8 +26,13 @@ typedef jint(JNICALL *CreateJavaVM)(JavaVM **pvm, void **penv, void *args);
 typedef jint(JNICALL * GetCreatedJavaVMs)(JavaVM**, jsize, jsize*);
 typedef std::pair<jclass, jmethodID> jclassMethodHolder;
 
+static IAddInDefBase *gAsyncEvent;
+
+
 class JVMLauncher : public IComponentBase {
 public:
+	JavaVM             *m_RunningJVMInstance;
+	JNIEnv             *m_JVMEnv;
 
 	enum Props
 	{
@@ -110,8 +115,6 @@ private:
 
 	CreateJavaVM        m_JVMInstance = nullptr;
 	GetCreatedJavaVMs   m_GetCreatedJavaVMs = nullptr;
-	JNIEnv             *m_JVMEnv;
-	JavaVM             *m_RunningJVMInstance;
 
 	std::vector<std::string> m_listOfJars;
 	std::vector<std::string> m_listOfClasses;

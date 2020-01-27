@@ -214,6 +214,7 @@
     <None Include="JVMLauncher.def" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="JavaThreadScope.h" />
     <ClInclude Include="Utils.h" />
     <ClInclude Include="include\AddInDefBase.h" />
     <ClInclude Include="include\addinlib.h" />
